@@ -1,0 +1,28 @@
+{
+  "name": "slack-kudos-bot",
+  "version": "1.0.0",
+  "description": "Slack bot for sending kudos to team members",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "slack",
+    "bot",
+    "kudos"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@slack/bolt": "^3.17.1",
+    "better-sqlite3": "^11.0.0",
+    "dotenv": "^16.4.0",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0"
+  }
+}
+
