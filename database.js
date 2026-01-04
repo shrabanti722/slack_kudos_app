@@ -176,6 +176,92 @@ export async function getAllKudos(limit = 50) {
   }
 }
 
+export async function getKudosSentByUser(userId, limit = 10) {
+  if (dbType === 'postgres') {
+    const result = await pgPool.query(`
+      SELECT * FROM kudos 
+      WHERE from_user_id = $1 
+      ORDER BY created_at DESC 
+      LIMIT $2
+    `, [userId, limit]);
+    return result.rows;
+  } else {
+    const stmt = db.prepare(`
+      SELECT * FROM kudos 
+      WHERE from_user_id = ? 
+      ORDER BY created_at DESC 
+      LIMIT ?
+    `);
+    return stmt.all(userId, limit);
+  }
+}
+
+export async function getKudosStats() {
+  if (dbType === 'postgres') {
+    const totalResult = await pgPool.query('SELECT COUNT(*) as count FROM kudos');
+    const usersResult = await pgPool.query(`
+      SELECT COUNT(DISTINCT to_user_id) as count FROM kudos
+    `);
+    const sendersResult = await pgPool.query(`
+      SELECT COUNT(DISTINCT from_user_id) as count FROM kudos
+    `);
+    const recentResult = await pgPool.query(`
+      SELECT COUNT(*) as count FROM kudos 
+      WHERE created_at >= NOW() - INTERVAL '7 days'
+    `);
+    
+    return {
+      total: parseInt(totalResult.rows[0].count),
+      uniqueRecipients: parseInt(usersResult.rows[0].count),
+      uniqueSenders: parseInt(sendersResult.rows[0].count),
+      last7Days: parseInt(recentResult.rows[0].count),
+    };
+  } else {
+    const totalStmt = db.prepare('SELECT COUNT(*) as count FROM kudos');
+    const usersStmt = db.prepare('SELECT COUNT(DISTINCT to_user_id) as count FROM kudos');
+    const sendersStmt = db.prepare('SELECT COUNT(DISTINCT from_user_id) as count FROM kudos');
+    const recentStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM kudos 
+      WHERE created_at >= datetime('now', '-7 days')
+    `);
+    
+    return {
+      total: totalStmt.get().count,
+      uniqueRecipients: usersStmt.get().count,
+      uniqueSenders: sendersStmt.get().count,
+      last7Days: recentStmt.get().count,
+    };
+  }
+}
+
+export async function getLeaderboard(limit = 10) {
+  if (dbType === 'postgres') {
+    const result = await pgPool.query(`
+      SELECT 
+        to_user_id,
+        to_user_name,
+        COUNT(*) as kudos_count
+      FROM kudos
+      GROUP BY to_user_id, to_user_name
+      ORDER BY kudos_count DESC
+      LIMIT $1
+    `, [limit]);
+    return result.rows;
+  } else {
+    const stmt = db.prepare(`
+      SELECT 
+        to_user_id,
+        to_user_name,
+        COUNT(*) as kudos_count
+      FROM kudos
+      GROUP BY to_user_id, to_user_name
+      ORDER BY kudos_count DESC
+      LIMIT ?
+    `);
+    return stmt.all(limit);
+  }
+}
+
 export async function closeDatabase() {
   if (dbType === 'postgres') {
     if (pgPool) {

@@ -12,6 +12,8 @@ A Slack bot that allows team members to send kudos to each other with options to
 - 💌 Send kudos via Direct Message
 - 🔄 Option to do both (channel + DM)
 - 💾 Store all kudos in database (SQLite for local, PostgreSQL for hosting)
+- 🌐 Web dashboard to view kudos, statistics, and leaderboard
+- 📊 RESTful API for accessing kudos data
 
 ## Prerequisites
 
@@ -105,8 +107,10 @@ npm install
    SLACK_APP_TOKEN=xapp-your-actual-app-token
    DATABASE_URL=postgresql://user:password@host:port/database
    DEFAULT_CHANNEL=#general
-   PORT=3000
+   PORT=3001
    ```
+   
+   > **Note:** The `PORT` environment variable is used by the web server. Most hosting platforms automatically set this. The Slack bot uses Socket Mode and doesn't require a port.
    
    > **Note:** If `DATABASE_URL` is set, the bot will use PostgreSQL. Otherwise, it defaults to SQLite for local development.
 
@@ -123,8 +127,10 @@ npm run dev
 
 You should see:
 ```
-⚡️ Slack Kudos Bot is running on port 3000!
+⚡️ Slack Kudos Bot is running!
 Ready to receive /kudos commands!
+🌐 Web server is running on http://localhost:3001
+📊 API available at http://localhost:3001/api
 ```
 
 ### 10. Test in Slack
@@ -132,6 +138,15 @@ Ready to receive /kudos commands!
 1. Go to your Slack workspace
 2. Type `/kudos` in any channel or DM
 3. The modal should open with the kudos form!
+
+### 11. Access the Web Dashboard
+
+1. Open your browser and go to `http://localhost:3001`
+2. You'll see the Kudos Dashboard with:
+   - Overall statistics
+   - Top kudos recipients leaderboard
+   - Recent kudos feed
+   - Search functionality to find kudos by user ID
 
 ## Usage
 
@@ -171,6 +186,85 @@ The bot automatically detects which database to use based on the `DATABASE_URL` 
 - `sent_dm` - Boolean: whether DM was sent
 - `sent_channel` - Boolean: whether channel post was sent
 - `created_at` - Timestamp
+
+## Web Dashboard & API
+
+The project includes a web dashboard and RESTful API for viewing kudos data.
+
+### Web Dashboard
+
+Access the dashboard at `http://localhost:3001` (or your hosted URL). The dashboard includes:
+
+- **Statistics Overview**: Total kudos, unique recipients/senders, and activity in the last 7 days
+- **Leaderboard**: Top kudos recipients ranked by number of kudos received
+- **Recent Kudos Feed**: Latest kudos posted across the team
+- **User Search**: Find all kudos received by a specific Slack user ID
+
+### API Endpoints
+
+All API endpoints are prefixed with `/api`:
+
+#### Get All Kudos
+```
+GET /api/kudos?limit=50
+```
+Returns a list of all kudos (default limit: 50)
+
+#### Get Kudos by User
+```
+GET /api/kudos/user/:userId?limit=10
+```
+Returns kudos received by a specific user (default limit: 10)
+
+#### Get Kudos Sent by User
+```
+GET /api/kudos/sent/:userId?limit=10
+```
+Returns kudos sent by a specific user (default limit: 10)
+
+#### Get Statistics
+```
+GET /api/stats
+```
+Returns overall statistics:
+```json
+{
+  "success": true,
+  "data": {
+    "total": 150,
+    "uniqueRecipients": 25,
+    "uniqueSenders": 30,
+    "last7Days": 12
+  }
+}
+```
+
+#### Get Leaderboard
+```
+GET /api/leaderboard?limit=10
+```
+Returns top kudos recipients (default limit: 10)
+
+#### Health Check
+```
+GET /health
+```
+Returns server health status
+
+### Frontend Development
+
+The frontend code is located in the `public/` directory:
+- `public/index.html` - Main HTML structure
+- `public/css/style.css` - Styling
+- `public/js/app.js` - JavaScript for API calls and UI interactions
+
+You can customize and extend the frontend as needed. The current implementation provides a basic foundation that can be enhanced with:
+- User authentication/identification
+- Advanced filtering and sorting
+- Pagination
+- Real-time updates
+- Charts and visualizations
+- Export functionality
 
 ## Troubleshooting
 

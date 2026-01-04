@@ -1,6 +1,7 @@
 import { App } from '@slack/bolt';
 import dotenv from 'dotenv';
 import { initDatabase, saveKudos, closeDatabase } from './database.js';
+import { startWebServer } from './web.js';
 
 // Load environment variables
 dotenv.config();
@@ -380,14 +381,30 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
 
 // Start the app
 (async () => {
-  const port = process.env.PORT || 3000;
+  // Wait for database to be initialized
+  while (!dbInitialized) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  // Start Slack bot (Socket Mode doesn't require a port)
   await app.start();
-  console.log(`⚡️ Slack Kudos Bot is running on port ${port}!`);
+  console.log(`⚡️ Slack Kudos Bot is running!`);
   console.log('Ready to receive /kudos commands!');
+  
+  // Start web server
+  startWebServer();
 })();
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
+  console.log('Shutting down gracefully...');
+  await app.stop();
+  await closeDatabase();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('Shutting down gracefully...');
   await app.stop();
   await closeDatabase();
   process.exit(0);
