@@ -2,6 +2,7 @@ import { App } from '@slack/bolt';
 import dotenv from 'dotenv';
 import { initDatabase, saveKudos, closeDatabase } from './database.js';
 import { startWebServer } from './web.js';
+import { setSlackClient } from './slack-client.js';
 
 // Load environment variables
 dotenv.config();
@@ -13,6 +14,9 @@ const app = new App({
   socketMode: true,
   appToken: process.env.SLACK_APP_TOKEN,
 });
+
+// Set Slack client for use in API routes
+setSlackClient(app.client);
 
 // Initialize database (async)
 let dbInitialized = false;
@@ -322,7 +326,7 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
   const channelName = shouldPostChannel
     ? values.channel_block?.channel?.selected_option?.text.text
     : null;
-  
+
   // Private kudos should not be posted to channels (only DM)
   if (visibility === 'private' && shouldPostChannel) {
     await ack({
@@ -432,10 +436,10 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
     });
 
     // Send confirmation to user
-    const visibilityLabel = visibility === 'private' ? '🔒 Private' : '🌐 Public';
+    const confirmationVisibilityLabel = visibility === 'private' ? '🔒 Private' : '🌐 Public';
     const confirmationMessage = `✅ Kudos sent successfully! ${emoji}\n\n`;
     const details = [];
-    details.push(`Visibility: ${visibilityLabel}`);
+    details.push(`Visibility: ${confirmationVisibilityLabel}`);
     if (sentDm) details.push('✓ Direct message sent');
     if (sentChannel) details.push(`✓ Posted in ${channelName || 'channel'}`);
     if (!sentDm && !sentChannel) {
@@ -463,12 +467,12 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
   while (!dbInitialized) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  
+
   // Start Slack bot (Socket Mode doesn't require a port)
   await app.start();
   console.log(`⚡️ Slack Kudos Bot is running!`);
   console.log('Ready to receive /kudos commands!');
-  
+
   // Start web server
   startWebServer();
 })();
