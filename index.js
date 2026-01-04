@@ -166,6 +166,68 @@ app.command('/kudos', async ({ command, ack, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
+              text: '*Visibility*',
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: 'Choose who can see this Kudos:\n• *Public*: Visible to everyone (default)\n• *Private*: Only visible to you, recipient, and managers',
+            },
+          },
+          {
+            type: 'input',
+            block_id: 'visibility_block',
+            label: {
+              type: 'plain_text',
+              text: 'Visibility',
+              emoji: true,
+            },
+            element: {
+              type: 'radio_buttons',
+              action_id: 'visibility',
+              initial_option: {
+                text: {
+                  type: 'plain_text',
+                  text: '🌐 Public',
+                },
+                value: 'public',
+              },
+              options: [
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: '🌐 Public',
+                  },
+                  value: 'public',
+                  description: {
+                    type: 'plain_text',
+                    text: 'Visible to everyone',
+                  },
+                },
+                {
+                  text: {
+                    type: 'plain_text',
+                    text: '🔒 Private',
+                  },
+                  value: 'private',
+                  description: {
+                    type: 'plain_text',
+                    text: 'Only visible to you, recipient, and managers',
+                  },
+                },
+              ],
+            },
+            optional: true,
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
               text: '*Where should this kudos be sent?*',
             },
           },
@@ -250,6 +312,7 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
   const recipientName = values.recipient_block.recipient.selected_option.text.text;
   const message = values.message_block.message.value;
   const emoji = values.emoji_block?.emoji?.selected_option?.value || '🎉';
+  const visibility = values.visibility_block?.visibility?.selected_option?.value || 'public';
   const postingOptions = values.posting_options_block.posting_options.selected_options || [];
   const shouldSendDm = postingOptions.some(opt => opt.value === 'dm');
   const shouldPostChannel = postingOptions.some(opt => opt.value === 'channel');
@@ -259,6 +322,17 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
   const channelName = shouldPostChannel
     ? values.channel_block?.channel?.selected_option?.text.text
     : null;
+  
+  // Private kudos should not be posted to channels (only DM)
+  if (visibility === 'private' && shouldPostChannel) {
+    await ack({
+      response_action: 'errors',
+      errors: {
+        posting_options_block: 'Private Kudos can only be sent via Direct Message, not to channels.',
+      },
+    });
+    return;
+  }
 
   // Validate
   if (!shouldSendDm && !shouldPostChannel) {
@@ -292,8 +366,9 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
     const senderInfo = await client.users.info({ user: userId });
     const senderDisplayName = senderInfo.user.real_name || senderInfo.user.name;
 
-    // Format kudos message
-    const kudosMessage = `${emoji} *Kudos to <@${recipientId}>!*\n\n*From:* <@${userId}>\n*Message:* ${message}`;
+    // Format kudos message with visibility indicator
+    const visibilityLabel = visibility === 'private' ? '🔒 Private' : '🌐 Public';
+    const kudosMessage = `${emoji} *Kudos to <@${recipientId}>!* ${visibilityLabel}\n\n*From:* <@${userId}>\n*Message:* ${message}`;
 
     let sentDm = false;
     let sentChannel = false;
@@ -353,11 +428,14 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
       channelName: channelName,
       sentDm: sentDm,
       sentChannel: sentChannel,
+      visibility: visibility,
     });
 
     // Send confirmation to user
+    const visibilityLabel = visibility === 'private' ? '🔒 Private' : '🌐 Public';
     const confirmationMessage = `✅ Kudos sent successfully! ${emoji}\n\n`;
     const details = [];
+    details.push(`Visibility: ${visibilityLabel}`);
     if (sentDm) details.push('✓ Direct message sent');
     if (sentChannel) details.push(`✓ Posted in ${channelName || 'channel'}`);
     if (!sentDm && !sentChannel) {

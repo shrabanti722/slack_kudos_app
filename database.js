@@ -45,7 +45,30 @@ export async function initDatabase(dbPath = './kudos.db') {
         channel_name TEXT,
         sent_dm BOOLEAN DEFAULT FALSE,
         sent_channel BOOLEAN DEFAULT FALSE,
+        visibility TEXT DEFAULT 'public',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Add visibility column if it doesn't exist (for existing databases)
+    await pgPool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='kudos' AND column_name='visibility'
+        ) THEN
+          ALTER TABLE kudos ADD COLUMN visibility TEXT DEFAULT 'public';
+        END IF;
+      END $$;
+    `);
+
+    // Create manager_relationships table for PostgreSQL
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS manager_relationships (
+        user_id TEXT PRIMARY KEY,
+        manager_id TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -54,6 +77,10 @@ export async function initDatabase(dbPath = './kudos.db') {
       CREATE INDEX IF NOT EXISTS idx_to_user ON kudos(to_user_id);
       CREATE INDEX IF NOT EXISTS idx_from_user ON kudos(from_user_id);
       CREATE INDEX IF NOT EXISTS idx_created_at ON kudos(created_at);
+      CREATE INDEX IF NOT EXISTS idx_visibility ON kudos(visibility);
+      CREATE INDEX IF NOT EXISTS idx_visibility_created ON kudos(visibility, created_at);
+      CREATE INDEX IF NOT EXISTS idx_manager_user ON manager_relationships(user_id);
+      CREATE INDEX IF NOT EXISTS idx_manager_manager ON manager_relationships(manager_id);
     `);
 
     return pgPool;
@@ -80,7 +107,28 @@ export async function initDatabase(dbPath = './kudos.db') {
         channel_name TEXT,
         sent_dm BOOLEAN DEFAULT 0,
         sent_channel BOOLEAN DEFAULT 0,
+        visibility TEXT DEFAULT 'public',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Add visibility column if it doesn't exist (for existing databases)
+    // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
+    const tableInfo = db.prepare("PRAGMA table_info(kudos)").all();
+    const hasVisibilityColumn = tableInfo.some(col => col.name === 'visibility');
+    
+    if (!hasVisibilityColumn) {
+      db.exec(`ALTER TABLE kudos ADD COLUMN visibility TEXT DEFAULT 'public'`);
+      // Update existing rows to have 'public' visibility
+      db.exec(`UPDATE kudos SET visibility = 'public' WHERE visibility IS NULL`);
+    }
+
+    // Create manager_relationships table for SQLite
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS manager_relationships (
+        user_id TEXT PRIMARY KEY,
+        manager_id TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -89,6 +137,10 @@ export async function initDatabase(dbPath = './kudos.db') {
       CREATE INDEX IF NOT EXISTS idx_to_user ON kudos(to_user_id);
       CREATE INDEX IF NOT EXISTS idx_from_user ON kudos(from_user_id);
       CREATE INDEX IF NOT EXISTS idx_created_at ON kudos(created_at);
+      CREATE INDEX IF NOT EXISTS idx_visibility ON kudos(visibility);
+      CREATE INDEX IF NOT EXISTS idx_visibility_created ON kudos(visibility, created_at);
+      CREATE INDEX IF NOT EXISTS idx_manager_user ON manager_relationships(user_id);
+      CREATE INDEX IF NOT EXISTS idx_manager_manager ON manager_relationships(manager_id);
     `);
 
     console.log('✅ Connected to SQLite database');
@@ -97,12 +149,14 @@ export async function initDatabase(dbPath = './kudos.db') {
 }
 
 export async function saveKudos(kudosData) {
+  const visibility = kudosData.visibility || 'public';
+  
   if (dbType === 'postgres') {
     const result = await pgPool.query(`
       INSERT INTO kudos (
         from_user_id, from_user_name, to_user_id, to_user_name,
-        message, channel_id, channel_name, sent_dm, sent_channel
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        message, channel_id, channel_name, sent_dm, sent_channel, visibility
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id
     `, [
       kudosData.fromUserId,
@@ -114,14 +168,15 @@ export async function saveKudos(kudosData) {
       kudosData.channelName || null,
       kudosData.sentDm || false,
       kudosData.sentChannel || false,
+      visibility,
     ]);
     return { lastInsertRowid: result.rows[0].id };
   } else {
     const stmt = db.prepare(`
       INSERT INTO kudos (
         from_user_id, from_user_name, to_user_id, to_user_name,
-        message, channel_id, channel_name, sent_dm, sent_channel
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        message, channel_id, channel_name, sent_dm, sent_channel, visibility
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     return stmt.run(
@@ -133,47 +188,81 @@ export async function saveKudos(kudosData) {
       kudosData.channelId || null,
       kudosData.channelName || null,
       kudosData.sentDm ? 1 : 0,
-      kudosData.sentChannel ? 1 : 0
+      kudosData.sentChannel ? 1 : 0,
+      visibility
     );
   }
 }
 
-export async function getKudosByUser(userId, limit = 10) {
+export async function getKudosByUser(userId, limit = 10, includePrivate = true) {
+  // If includePrivate is false, only return public kudos
+  // If true, return all kudos (for the user themselves or authorized viewers)
   if (dbType === 'postgres') {
-    const result = await pgPool.query(`
-      SELECT * FROM kudos 
-      WHERE to_user_id = $1 
-      ORDER BY created_at DESC 
-      LIMIT $2
-    `, [userId, limit]);
+    let query = `SELECT * FROM kudos WHERE to_user_id = $1`;
+    const params = [userId];
+    
+    if (!includePrivate) {
+      query += ` AND visibility = 'public'`;
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+    
+    const result = await pgPool.query(query, params);
     return result.rows;
   } else {
-    const stmt = db.prepare(`
-      SELECT * FROM kudos 
-      WHERE to_user_id = ? 
-      ORDER BY created_at DESC 
-      LIMIT ?
-    `);
-    return stmt.all(userId, limit);
+    let query = `SELECT * FROM kudos WHERE to_user_id = ?`;
+    const params = [userId];
+    
+    if (!includePrivate) {
+      query += ` AND visibility = 'public'`;
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT ?`;
+    params.push(limit);
+    
+    const stmt = db.prepare(query);
+    return stmt.all(...params);
   }
 }
 
-export async function getAllKudos(limit = 50) {
+export async function getAllKudos(limit = 50, visibilityFilter = null) {
   if (dbType === 'postgres') {
-    const result = await pgPool.query(`
-      SELECT * FROM kudos 
-      ORDER BY created_at DESC 
-      LIMIT $1
-    `, [limit]);
+    let query = `SELECT * FROM kudos`;
+    const params = [];
+    
+    if (visibilityFilter === 'public') {
+      query += ` WHERE visibility = 'public'`;
+    } else if (visibilityFilter === 'private') {
+      query += ` WHERE visibility = 'private'`;
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+    
+    const result = await pgPool.query(query, params);
     return result.rows;
   } else {
-    const stmt = db.prepare(`
-      SELECT * FROM kudos 
-      ORDER BY created_at DESC 
-      LIMIT ?
-    `);
-    return stmt.all(limit);
+    let query = `SELECT * FROM kudos`;
+    const params = [];
+    
+    if (visibilityFilter === 'public') {
+      query += ` WHERE visibility = 'public'`;
+    } else if (visibilityFilter === 'private') {
+      query += ` WHERE visibility = 'private'`;
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT ?`;
+    params.push(limit);
+    
+    const stmt = db.prepare(query);
+    return stmt.all(...params);
   }
+}
+
+// Get only public kudos (for public feeds)
+export async function getPublicKudos(limit = 50) {
+  return getAllKudos(limit, 'public');
 }
 
 export async function getKudosSentByUser(userId, limit = 10) {
@@ -259,6 +348,54 @@ export async function getLeaderboard(limit = 10) {
       LIMIT ?
     `);
     return stmt.all(limit);
+  }
+}
+
+// Manager relationship functions (for future use)
+export async function setManagerRelationship(userId, managerId) {
+  if (dbType === 'postgres') {
+    await pgPool.query(`
+      INSERT INTO manager_relationships (user_id, manager_id)
+      VALUES ($1, $2)
+      ON CONFLICT (user_id) 
+      DO UPDATE SET manager_id = $2, updated_at = CURRENT_TIMESTAMP
+    `, [userId, managerId]);
+  } else {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO manager_relationships (user_id, manager_id, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `);
+    stmt.run(userId, managerId);
+  }
+}
+
+export async function getManager(userId) {
+  if (dbType === 'postgres') {
+    const result = await pgPool.query(`
+      SELECT manager_id FROM manager_relationships WHERE user_id = $1
+    `, [userId]);
+    return result.rows.length > 0 ? result.rows[0].manager_id : null;
+  } else {
+    const stmt = db.prepare(`
+      SELECT manager_id FROM manager_relationships WHERE user_id = ?
+    `);
+    const row = stmt.get(userId);
+    return row ? row.manager_id : null;
+  }
+}
+
+export async function getDirectReports(managerId) {
+  if (dbType === 'postgres') {
+    const result = await pgPool.query(`
+      SELECT user_id FROM manager_relationships WHERE manager_id = $1
+    `, [managerId]);
+    return result.rows.map(row => row.user_id);
+  } else {
+    const stmt = db.prepare(`
+      SELECT user_id FROM manager_relationships WHERE manager_id = ?
+    `);
+    const rows = stmt.all(managerId);
+    return rows.map(row => row.user_id);
   }
 }
 

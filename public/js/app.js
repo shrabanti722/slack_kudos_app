@@ -125,16 +125,17 @@ async function loadLeaderboard() {
     }
 }
 
-// Load and display recent kudos
+// Load and display recent kudos (public only for public feed)
 async function loadRecentKudos() {
     try {
-        const response = await fetch(`${API_BASE}/kudos?limit=10`);
+        // Load only public kudos for the public feed
+        const response = await fetch(`${API_BASE}/kudos/public?limit=10`);
         const data = await response.json();
         
         if (data.success && data.data.length > 0) {
             allKudosList.innerHTML = data.data.map(k => createKudosCard(k)).join('');
         } else {
-            allKudosList.innerHTML = '<div class="loading">No kudos found</div>';
+            allKudosList.innerHTML = '<div class="loading">No public kudos found</div>';
         }
     } catch (error) {
         console.error('Error loading recent kudos:', error);
@@ -153,7 +154,12 @@ function createKudosCard(kudos) {
         minute: '2-digit'
     });
     
+    const visibility = kudos.visibility || 'public';
+    const visibilityIcon = visibility === 'private' ? '🔒' : '🌐';
+    const visibilityLabel = visibility === 'private' ? 'Private' : 'Public';
+    
     const meta = [];
+    meta.push(`${visibilityIcon} ${visibilityLabel}`);
     if (kudos.sent_dm) meta.push('📧 DM');
     if (kudos.sent_channel && kudos.channel_name) {
         meta.push(`#${kudos.channel_name}`);
@@ -162,7 +168,7 @@ function createKudosCard(kudos) {
     return `
         <div class="kudos-card">
             <div class="kudos-header">
-                <div class="kudos-from">From: ${escapeHtml(kudos.from_user_name)}</div>
+                <div class="kudos-from">From: ${escapeHtml(kudos.from_user_name)} → To: ${escapeHtml(kudos.to_user_name)}</div>
                 <div class="kudos-date">${formattedDate}</div>
             </div>
             <div class="kudos-message">${escapeHtml(kudos.message)}</div>

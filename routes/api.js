@@ -9,15 +9,38 @@ import {
 
 const router = express.Router();
 
-// Get all kudos (with optional limit)
+// Get all kudos (with optional limit and visibility filter)
 router.get('/kudos', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
-    const kudos = await getAllKudos(limit);
+    const visibility = req.query.visibility; // 'public', 'private', or undefined (all)
+    
+    // If visibility is specified, use it; otherwise get all
+    let kudos;
+    if (visibility === 'public') {
+      const { getPublicKudos } = await import('../database.js');
+      kudos = await getPublicKudos(limit);
+    } else {
+      kudos = await getAllKudos(limit, visibility || null);
+    }
+    
     res.json({ success: true, data: kudos, count: kudos.length });
   } catch (error) {
     console.error('Error fetching kudos:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch kudos' });
+  }
+});
+
+// Get only public kudos (for public feeds)
+router.get('/kudos/public', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const { getPublicKudos } = await import('../database.js');
+    const kudos = await getPublicKudos(limit);
+    res.json({ success: true, data: kudos, count: kudos.length });
+  } catch (error) {
+    console.error('Error fetching public kudos:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch public kudos' });
   }
 });
 
@@ -26,7 +49,10 @@ router.get('/kudos/user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const limit = parseInt(req.query.limit) || 10;
-    const kudos = await getKudosByUser(userId, limit);
+    // For now, include private kudos (in future, check if requester is authorized)
+    // TODO: Add authorization check to only show private kudos to sender, recipient, or managers
+    const includePrivate = req.query.includePrivate !== 'false'; // Default to true
+    const kudos = await getKudosByUser(userId, limit, includePrivate);
     res.json({ success: true, data: kudos, count: kudos.length });
   } catch (error) {
     console.error('Error fetching user kudos:', error);
