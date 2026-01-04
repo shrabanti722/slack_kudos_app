@@ -1,4 +1,5 @@
-import { App } from '@slack/bolt';
+import pkg from '@slack/bolt';
+const { App } = pkg;
 import dotenv from 'dotenv';
 import { initDatabase, saveKudos, closeDatabase } from './database.js';
 import { startWebServer } from './web.js';
@@ -18,10 +19,25 @@ const app = new App({
 let dbInitialized = false;
 (async () => {
   try {
-    await initDatabase(process.env.DB_PATH || './kudos.db');
+    const databaseUrl = process.env.DATABASE_URL;
+    
+    if (!databaseUrl || databaseUrl.trim() === '') {
+      console.error('❌ DATABASE_URL is required! Please set it in your .env file.');
+      console.error('💡 Get your Supabase connection string from Project Settings → Database');
+      console.error('💡 Format: DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres');
+      process.exit(1);
+    }
+    
+    console.log('🔌 Connecting to database...');
+    await initDatabase();
     dbInitialized = true;
   } catch (error) {
-    console.error('❌ Failed to initialize database:', error);
+    console.error('❌ Failed to initialize database:', error.message);
+    console.error('💡 Make sure your DATABASE_URL is correct and your Supabase project is active.');
+    console.error('💡 Check that:');
+    console.error('   1. Your .env file exists and has DATABASE_URL set');
+    console.error('   2. The connection string starts with "postgresql://"');
+    console.error('   3. Your Supabase project is not paused');
     process.exit(1);
   }
 })();
@@ -432,7 +448,6 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
     });
 
     // Send confirmation to user
-    const visibilityLabel = visibility === 'private' ? '🔒 Private' : '🌐 Public';
     const confirmationMessage = `✅ Kudos sent successfully! ${emoji}\n\n`;
     const details = [];
     details.push(`Visibility: ${visibilityLabel}`);

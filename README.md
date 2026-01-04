@@ -11,7 +11,7 @@ A Slack bot that allows team members to send kudos to each other with options to
 - 📢 Post kudos to channels
 - 💌 Send kudos via Direct Message
 - 🔄 Option to do both (channel + DM)
-- 💾 Store all kudos in database (SQLite for local, PostgreSQL for hosting)
+- 💾 Store all kudos in Supabase (PostgreSQL database)
 - 🌐 Web dashboard to view kudos, statistics, and leaderboard
 - 📊 RESTful API for accessing kudos data
 
@@ -90,29 +90,18 @@ npm install
    ```
 
 2. Edit `.env` and add your tokens:
-   
-   **For local development (SQLite):**
    ```env
    SLACK_BOT_TOKEN=xoxb-your-actual-bot-token
    SLACK_SIGNING_SECRET=your-actual-signing-secret
    SLACK_APP_TOKEN=xapp-your-actual-app-token
-   DB_PATH=./kudos.db
-   DEFAULT_CHANNEL=#general
-   ```
-   
-   **For hosting (PostgreSQL):**
-   ```env
-   SLACK_BOT_TOKEN=xoxb-your-actual-bot-token
-   SLACK_SIGNING_SECRET=your-actual-signing-secret
-   SLACK_APP_TOKEN=xapp-your-actual-app-token
-   DATABASE_URL=postgresql://user:password@host:port/database
+   DATABASE_URL=postgresql://postgres:yourpassword@db.xxxxx.supabase.co:5432/postgres
    DEFAULT_CHANNEL=#general
    PORT=3001
    ```
    
    > **Note:** The `PORT` environment variable is used by the web server. Most hosting platforms automatically set this. The Slack bot uses Socket Mode and doesn't require a port.
    
-   > **Note:** If `DATABASE_URL` is set, the bot will use PostgreSQL. Otherwise, it defaults to SQLite for local development.
+   > **Note:** See the "Database Setup with Supabase" section below for detailed instructions on getting your `DATABASE_URL`.
 
 ### 9. Run the Bot
 
@@ -164,14 +153,53 @@ The bot will:
 - Store it in the database
 - Show you a confirmation message
 
-## Database
+## Database Setup with Supabase
 
-The bot supports two database options:
+This project uses Supabase (PostgreSQL) for database storage. Supabase works great for both local development and production hosting.
 
-- **SQLite** (default for local development) - Database file (`kudos.db`) will be created automatically
-- **PostgreSQL** (recommended for hosting) - Set `DATABASE_URL` environment variable to use PostgreSQL
+### Setting Up Supabase
 
-The bot automatically detects which database to use based on the `DATABASE_URL` environment variable. If `DATABASE_URL` is set, it uses PostgreSQL; otherwise, it uses SQLite.
+1. **Create a Supabase account** at [supabase.com](https://supabase.com)
+2. **Create a new project:**
+   - Click "New Project"
+   - Choose your organization
+   - Enter a project name (e.g., "slack-kudos-bot")
+   - Enter a database password (save this securely!)
+   - Choose a region closest to your location
+   - Click "Create new project"
+3. **Wait for the project to be ready** (takes 1-2 minutes)
+4. **Get your connection string:**
+   
+   **Method 1 (Recommended):**
+   - In your Supabase project dashboard, look at the left sidebar
+   - Click on **"Project Settings"** (gear icon ⚙️ at the bottom of the sidebar)
+   - Click on **"Database"** in the settings menu
+   - Scroll down to find **"Connection string"** or **"Connection pooling"** section
+   - Look for **"URI"** or **"Connection string"** - it should show a string starting with `postgresql://`
+   - Click on the connection string to copy it, or use the copy button
+   
+   **Method 2 (Alternative - If you can't find it in Settings):**
+   - The connection string format is: `postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres`
+   - To find your project reference:
+     - Go to **Project Settings** → **General**
+     - Look for **"Reference ID"** or check your project URL
+     - It's the part between `db.` and `.supabase.co` in your database URL
+   - Replace `[YOUR-PASSWORD]` with the database password you set when creating the project
+   - Replace `[PROJECT-REF]` with your project reference ID
+   
+   The connection string should look like: `postgresql://postgres:yourpassword@db.abcdefghijklmnop.supabase.co:5432/postgres`
+
+5. **Add to your `.env` file:**
+   ```env
+   DATABASE_URL=postgresql://postgres:yourpassword@db.xxxxx.supabase.co:5432/postgres
+   ```
+
+The bot will automatically detect Supabase and configure SSL connections correctly. The `kudos` table will be created automatically on first run.
+
+**Note:** Supabase's free tier includes:
+- 500 MB database storage
+- 2 GB bandwidth
+- Perfect for small to medium teams
 
 ### Database Schema
 
@@ -268,11 +296,60 @@ You can customize and extend the frontend as needed. The current implementation 
 
 ## Troubleshooting
 
-### Bot doesn't respond to `/kudos`
-- Make sure the bot is running (`npm start`)
-- Verify all tokens in `.env` are correct
-- Check that Socket Mode is enabled in Slack app settings
-- Ensure the slash command is created and saved
+### Bot doesn't respond to `/kudos` or shows "dispatch_failed"
+
+This error usually means the bot isn't running or Socket Mode isn't connected. Follow these steps:
+
+1. **Make sure the bot is running:**
+   ```bash
+   npm start
+   ```
+   
+   You should see:
+   ```
+   ✅ Connected to PostgreSQL database
+   ⚡️ Slack Kudos Bot is running!
+   Ready to receive /kudos commands!
+   🌐 Web server is running on http://localhost:3001
+   ```
+
+2. **Verify your `.env` file has all required variables:**
+   ```bash
+   # Check if .env file exists and has all tokens
+   cat .env
+   ```
+   
+   Make sure you have:
+   - `SLACK_BOT_TOKEN` (starts with `xoxb-`)
+   - `SLACK_SIGNING_SECRET`
+   - `SLACK_APP_TOKEN` (starts with `xapp-`)
+   - `DATABASE_URL` (your Supabase connection string)
+
+3. **Check Socket Mode is enabled:**
+   - Go to [api.slack.com/apps](https://api.slack.com/apps)
+   - Select your app
+   - Go to **"Socket Mode"** in the left sidebar
+   - Make sure it's toggled **ON**
+   - Verify you have an App-Level Token with `connections:write` scope
+
+4. **Verify the slash command is set up:**
+   - Go to **"Slash Commands"** in your Slack app settings
+   - Make sure `/kudos` command exists
+   - The Request URL doesn't matter for Socket Mode (it's not used)
+
+5. **Check for error messages in the console:**
+   - Look for any red error messages when you start the bot
+   - Common errors:
+     - `Failed to initialize database` - Check your `DATABASE_URL`
+     - `An API error occurred: invalid_auth` - Check your tokens
+     - `Socket connection failed` - Check your `SLACK_APP_TOKEN`
+
+6. **Reinstall the app to workspace (if needed):**
+   - Go to **"OAuth & Permissions"**
+   - Click **"Reinstall to Workspace"**
+   - Copy the new `SLACK_BOT_TOKEN` if it changed
+   - Update your `.env` file with the new token
+   - Restart the bot
 
 ### "Missing required scope" errors
 - Go to OAuth & Permissions in Slack app settings
@@ -284,13 +361,16 @@ You can customize and extend the frontend as needed. The current implementation 
 - Make sure the bot is installed to the workspace
 
 ### Database errors
-- **SQLite:** Ensure the directory is writable
-- **PostgreSQL:** Verify your `DATABASE_URL` connection string is correct
+- Verify your `DATABASE_URL` connection string is correct
+- Make sure your Supabase project is active and the database password is correct
 - Check that database dependencies are installed: `npm install`
+- Ensure your Supabase project hasn't been paused (free tier projects pause after inactivity)
 
 ## Hosting the Bot
 
-Since local SQLite files don't persist on most hosting platforms, you'll need to use PostgreSQL for production hosting.
+The bot uses Supabase for database storage, which works seamlessly for both local development and production hosting.
+
+**Important:** This project requires a persistent connection for Socket Mode, so it needs a hosting platform that supports long-running processes (not serverless functions).
 
 ### Quick Hosting Options
 
@@ -298,28 +378,22 @@ Since local SQLite files don't persist on most hosting platforms, you'll need to
 
 1. **Create a Railway account** at [railway.app](https://railway.app)
 2. **Create a new project** and connect your GitHub repository
-3. **Add PostgreSQL service:**
-   - Click "New" → "Database" → "Add PostgreSQL"
-   - Railway will automatically create a `DATABASE_URL` environment variable
-4. **Add environment variables:**
+3. **Add environment variables:**
    - `SLACK_BOT_TOKEN` - Your bot token
    - `SLACK_SIGNING_SECRET` - Your signing secret
    - `SLACK_APP_TOKEN` - Your app token
-   - `DATABASE_URL` - Automatically set by Railway PostgreSQL service
+   - `DATABASE_URL` - Your Supabase connection string (see Database Setup above)
    - `PORT` - Railway sets this automatically
-5. **Deploy:** Railway will automatically deploy when you push to your repository
+4. **Deploy:** Railway will automatically deploy when you push to your repository
 
 #### Option 2: Render
 
 1. **Create a Render account** at [render.com](https://render.com)
 2. **Create a new Web Service** and connect your repository
-3. **Add PostgreSQL database:**
-   - Create a new PostgreSQL database
-   - Copy the "Internal Database URL" or "External Database URL"
-4. **Configure environment variables:**
+3. **Configure environment variables:**
    - Add all required Slack tokens
-   - Set `DATABASE_URL` to your PostgreSQL connection string
-5. **Deploy:** Render will build and deploy your bot
+   - Set `DATABASE_URL` to your Supabase connection string
+4. **Deploy:** Render will build and deploy your bot
 
 #### Option 3: Heroku
 
@@ -328,18 +402,14 @@ Since local SQLite files don't persist on most hosting platforms, you'll need to
    ```bash
    heroku create your-kudos-bot
    ```
-3. **Add PostgreSQL addon:**
-   ```bash
-   heroku addons:create heroku-postgresql:mini
-   ```
-   This automatically sets `DATABASE_URL`
-4. **Set environment variables:**
+3. **Set environment variables:**
    ```bash
    heroku config:set SLACK_BOT_TOKEN=xoxb-your-token
    heroku config:set SLACK_SIGNING_SECRET=your-secret
    heroku config:set SLACK_APP_TOKEN=xapp-your-token
+   heroku config:set DATABASE_URL=postgresql://postgres:yourpassword@db.xxxxx.supabase.co:5432/postgres
    ```
-5. **Deploy:**
+4. **Deploy:**
    ```bash
    git push heroku main
    ```
@@ -347,41 +417,35 @@ Since local SQLite files don't persist on most hosting platforms, you'll need to
 #### Option 4: Fly.io
 
 1. **Install Fly CLI** and create an account
-2. **Create a PostgreSQL database:**
+2. **Set environment variables** in `fly.toml` or via CLI:
    ```bash
-   fly postgres create --name kudos-db
+   fly secrets set SLACK_BOT_TOKEN=xoxb-your-token
+   fly secrets set SLACK_SIGNING_SECRET=your-secret
+   fly secrets set SLACK_APP_TOKEN=xapp-your-token
+   fly secrets set DATABASE_URL=postgresql://postgres:yourpassword@db.xxxxx.supabase.co:5432/postgres
    ```
-3. **Attach database to your app:**
-   ```bash
-   fly postgres attach kudos-db --app your-kudos-bot
-   ```
-4. **Set environment variables** in `fly.toml` or via CLI
-5. **Deploy:**
+3. **Deploy:**
    ```bash
    fly deploy
    ```
 
-### Getting a PostgreSQL Database
+### Can I Use Vercel?
 
-If your hosting platform doesn't provide PostgreSQL, you can use:
+**Short answer: Not recommended for the full project.**
 
-- **Supabase** (free tier available): [supabase.com](https://supabase.com)
-- **Neon** (serverless PostgreSQL): [neon.tech](https://neon.tech)
-- **ElephantSQL** (free tier available): [elephantsql.com](https://elephantsql.com)
+Vercel is designed for serverless functions and static sites. This project uses **Socket Mode**, which requires a **persistent WebSocket connection** that can't be maintained in serverless functions.
 
-After creating a database, copy the connection string and set it as `DATABASE_URL`.
+**Why it won't work:**
+- Socket Mode needs a long-running process to maintain the WebSocket connection
+- Vercel's serverless functions have execution time limits and are stateless
+- The bot would disconnect every time a function times out
 
-### Database Connection String Format
+**If you really want to use Vercel**, you would need to:
+1. **Host the Slack bot separately** on Railway/Render/Fly.io (for Socket Mode)
+2. **Deploy only the web server/API to Vercel** as serverless functions
+3. This requires separating the bot code from the web server code
 
-PostgreSQL connection strings typically look like:
-```
-postgresql://username:password@host:port/database
-```
-
-For hosted databases with SSL (most common):
-```
-postgresql://username:password@host:port/database?sslmode=require
-```
+**Recommendation:** For simplicity, host everything on one platform like **Railway** or **Render**, which support persistent processes and are perfect for this use case.
 
 ## Future Enhancements
 

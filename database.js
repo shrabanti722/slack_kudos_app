@@ -14,21 +14,62 @@ let pgPool = null;
 // Initialize database - supports both SQLite and PostgreSQL
 export async function initDatabase(dbPath = './kudos.db') {
   // Check if DATABASE_URL is set (PostgreSQL connection string)
-  if (process.env.DATABASE_URL) {
+  const databaseUrl = process.env.DATABASE_URL;
+
+  console.log('databaseUrl', databaseUrl);
+  
+  if (databaseUrl && databaseUrl.trim() !== '') {
     dbType = 'postgres';
+    
+    // Validate connection string format
+    if (!databaseUrl.startsWith('postgresql://') && !databaseUrl.startsWith('postgres://')) {
+      throw new Error('DATABASE_URL must start with "postgresql://" or "postgres://"');
+    }
+    
+    // Configure SSL for PostgreSQL (required for Supabase and most hosted databases)
+    let connectionString = databaseUrl.trim();
+    const needsSSL = connectionString.includes('supabase.co') || 
+                     connectionString.includes('pooler.supabase.com') ||
+                     connectionString.includes('sslmode=require') ||
+                     connectionString.includes('ssl=true');
+    
+    // The pg library should handle URL encoding automatically, but if you get connection errors
+    // with special characters in the password, you might need to URL-encode the password part
+    // For now, we'll use the connection string as-is since pg handles it
+    
     pgPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL.includes('sslmode=require') 
-        ? { rejectUnauthorized: false } 
-        : false,
+      connectionString: connectionString,
+      ssl: needsSSL ? { rejectUnauthorized: false } : false,
     });
 
     // Test connection
     try {
-      await pgPool.query('SELECT NOW()');
+      console.log('🔌 Testing database connection...');
+      console.log('🌐 Connecting to:', connectionString.replace(/:[^:@]+@/, ':****@')); // Hide password in logs
+      const result = await pgPool.query('SELECT NOW()');
       console.log('✅ Connected to PostgreSQL database');
+      console.log('📅 Database time:', result.rows[0].now);
     } catch (error) {
-      console.error('❌ Error connecting to PostgreSQL:', error);
+      console.error('❌ Error connecting to PostgreSQL:', error.message);
+      
+      if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
+        console.error('💡 DNS/Network Error - Check that:');
+        console.error('   1. You have internet connectivity');
+        console.error('   2. Your Supabase project is active (not paused)');
+        console.error('   3. The hostname is correct: db.wrcgwibylffukutgbjkm.supabase.co');
+        console.error('   4. Try pinging the hostname: ping db.wrcgwibylffukutgbjkm.supabase.co');
+        console.error('   5. Check if your network/firewall blocks the connection');
+        console.error('   6. If using VPN, try disconnecting or switching networks');
+      } else if (error.message.includes('password') || error.message.includes('authentication')) {
+        console.error('💡 Authentication Error - Check that:');
+        console.error('   1. Your database password is correct');
+        console.error('   2. If your password has special characters, they are URL-encoded');
+        console.error('      Example: + becomes %2B, / becomes %2F, & becomes %26');
+      } else {
+        console.error('💡 Check that:');
+        console.error('   1. Your Supabase project is active (not paused)');
+        console.error('   2. Your connection string is properly formatted');
+      }
       throw error;
     }
 
