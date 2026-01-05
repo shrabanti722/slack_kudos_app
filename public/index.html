@@ -4,64 +4,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Slack Kudos Dashboard</title>
+    <title>Slack Kudos Portal</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 
 <body>
     <div class="container">
         <header>
-            <h1>🎉 Slack Kudos Dashboard</h1>
-            <p class="subtitle">View and celebrate all the kudos your team has received!</p>
+            <h1>🎉 Slack Kudos Portal</h1>
+            <p class="subtitle">Recognize and celebrate your team members!</p>
         </header>
 
         <main>
-            <!-- User Search Section -->
-            <section class="search-section">
-                <div class="search-box">
-                    <label for="userIdInput">Enter Slack User ID:</label>
-                    <input type="text" id="userIdInput" placeholder="e.g., U1234567890" autocomplete="off">
-                    <button id="searchBtn">View Kudos</button>
+            <!-- Navigation Tabs -->
+            <nav class="portal-nav">
+                <button class="nav-tab active" data-tab="send">Send Kudos</button>
+                <button class="nav-tab" data-tab="received">My Kudos</button>
+            </nav>
+
+            <!-- Send Kudos Section -->
+            <section class="portal-section active" id="sendSection">
+                <h2>✨ Send Kudos to a Team Member</h2>
+                <div class="kudos-form-container">
+                    <form id="kudosForm" class="kudos-form">
+                        <div class="form-group">
+                            <label for="recipientSelect">Select Team Member *</label>
+                            <select id="recipientSelect" name="recipient" required>
+                                <option value="">Loading team members...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="kudosMessage">Kudos Message *</label>
+                            <textarea id="kudosMessage" name="message" rows="5"
+                                placeholder="What did they do that deserves recognition? (minimum 10 characters)"
+                                required minlength="10"></textarea>
+                            <div class="char-count">
+                                <span id="charCount">0</span> / 10 minimum
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="emojiSelect">Choose an Emoji</label>
+                            <select id="emojiSelect" name="emoji">
+                                <option value="🎉">🎉 Party</option>
+                                <option value="👏">👏 Clap</option>
+                                <option value="🌟">🌟 Star</option>
+                                <option value="💯">💯 100</option>
+                                <option value="🔥">🔥 Fire</option>
+                                <option value="✨">✨ Sparkles</option>
+                                <option value="🙌">🙌 Praise</option>
+                                <option value="💪">💪 Strong</option>
+                                <option value="🚀">🚀 Rocket</option>
+                                <option value="⭐">⭐ Star</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Visibility</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="visibility" value="public" checked>
+                                    <span>🌐 Public - Visible to everyone</span>
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="visibility" value="private">
+                                    <span>🔒 Private - Only visible to recipient and managers</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="sendDm" checked>
+                                <span>Send Direct Message to recipient</span>
+                            </label>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary" id="submitBtn">
+                                <span class="btn-text">Send Kudos</span>
+                                <span class="btn-loader" style="display: none;">⏳ Sending...</span>
+                            </button>
+                        </div>
+                    </form>
                 </div>
-                <div class="info-text">
-                    <p>💡 <strong>Tip:</strong> Find your Slack User ID by right-clicking your profile in Slack → "Copy
-                        member ID"</p>
+
+                <!-- Success Message -->
+                <div id="successMessage" class="success-message" style="display: none;">
+                    <div class="success-content">
+                        <div class="success-icon">🎉</div>
+                        <h3>Kudos Sent Successfully!</h3>
+                        <p>Your appreciation has been delivered. Thank you for recognizing your teammate!</p>
+                        <p class="success-subtext">Keep spreading positivity! 🌟</p>
+                        <button class="btn-secondary" onclick="resetForm()">Send Another Kudos</button>
+                    </div>
                 </div>
             </section>
 
-            <!-- Stats Section -->
-            <section class="stats-section" id="statsSection">
-                <h2>📊 Overall Statistics</h2>
-                <div class="stats-grid" id="statsGrid">
-                    <!-- Stats will be populated by JavaScript -->
+            <!-- My Kudos Section -->
+            <section class="portal-section" id="receivedSection">
+                <h2>📬 Kudos I've Received</h2>
+                <div class="user-select-section">
+                    <div class="search-box">
+                        <label for="myUserIdInput">Enter Your Slack User ID:</label>
+                        <input type="text" id="myUserIdInput" placeholder="e.g., U1234567890" autocomplete="off">
+                        <button id="loadMyKudosBtn">Load My Kudos</button>
+                    </div>
+                    <div class="info-text">
+                        <p>💡 <strong>Tip:</strong> Find your Slack User ID by right-clicking your profile in Slack →
+                            "Copy member ID"</p>
+                    </div>
                 </div>
-            </section>
-
-            <!-- Leaderboard Section -->
-            <section class="leaderboard-section" id="leaderboardSection">
-                <h2>🏆 Top Kudos Recipients</h2>
-                <div class="leaderboard" id="leaderboard">
-                    <!-- Leaderboard will be populated by JavaScript -->
-                </div>
-            </section>
-
-            <!-- User Kudos Section -->
-            <section class="kudos-section" id="kudosSection" style="display: none;">
-                <h2 id="kudosSectionTitle">Kudos Received</h2>
-                <div class="kudos-list" id="kudosList">
-                    <!-- Kudos will be populated by JavaScript -->
-                </div>
-            </section>
-
-            <!-- All Kudos Section -->
-            <section class="all-kudos-section">
-                <h2>✨ Recent Public Kudos</h2>
-                <div class="info-text">
-                    <p>💡 Only public Kudos are shown here. Private Kudos are only visible to the sender, recipient, and
-                        their managers.</p>
-                </div>
-                <div class="kudos-list" id="allKudosList">
-                    <!-- Recent kudos will be populated by JavaScript -->
+                <div class="kudos-list" id="myKudosList">
+                    <div class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <p>Enter your Slack User ID above to see your Kudos</p>
+                    </div>
                 </div>
             </section>
         </main>
@@ -71,7 +130,7 @@
         </footer>
     </div>
 
-    <script src="/js/app.js"></script>
+    <script src="/js/portal.js"></script>
 </body>
 
 </html>
