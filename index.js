@@ -24,14 +24,14 @@ let dbInitialized = false;
 (async () => {
   try {
     const databaseUrl = process.env.DATABASE_URL;
-    
+
     if (!databaseUrl || databaseUrl.trim() === '') {
       console.error('❌ DATABASE_URL is required! Please set it in your .env file.');
       console.error('💡 Get your Supabase connection string from Project Settings → Database');
       console.error('💡 Format: DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres');
       process.exit(1);
     }
-    
+
     console.log('🔌 Connecting to database...');
     await initDatabase();
     dbInitialized = true;
@@ -72,30 +72,6 @@ app.command('/kudos', async ({ command, ack, client }) => {
     // with built-in search functionality and no 100-item limit
     console.log('👥 Using users_select for team member selection (supports search, no limit)');
 
-    console.log('📢 Fetching channels...');
-    // Get list of public channels
-    const channelsResult = await client.conversations.list({
-      types: 'public_channel,private_channel',
-      exclude_archived: true,
-    });
-    console.log(`📊 Raw channels result: ${channelsResult.channels?.length || 0} channels`);
-    
-    const allChannels = (channelsResult.channels || [])
-      .map(channel => ({
-        text: {
-          type: 'plain_text',
-          text: `#${channel.name}`,
-        },
-        value: channel.id,
-      }))
-      .sort((a, b) => a.text.text.localeCompare(b.text.text)); // Sort alphabetically
-    
-    // Limit channels to 100 as well
-    const channels = allChannels.slice(0, 100);
-    const totalChannels = allChannels.length;
-
-    console.log(`✅ Found ${totalChannels} channels (showing first ${channels.length} in dropdown)`);
-
     // Validate trigger_id
     if (!command.trigger_id) {
       console.error('❌ Missing trigger_id! Cannot open modal.');
@@ -105,8 +81,8 @@ app.command('/kudos', async ({ command, ack, client }) => {
     console.log('🚀 Opening modal...');
     console.log(`   Trigger ID: ${command.trigger_id.substring(0, 20)}...`);
     console.log(`   Using users_select (searchable, no limit)`);
-    console.log(`   Channels in dropdown: ${channels.length}`);
-    
+    console.log(`   Using conversations_select (searchable, all channel types)`);
+
     // Open modal
     const modalResponse = await client.views.open({
       trigger_id: command.trigger_id,
@@ -330,20 +306,24 @@ app.command('/kudos', async ({ command, ack, client }) => {
               emoji: true,
             },
             element: {
-              type: 'static_select',
+              type: 'conversations_select',
               action_id: 'channel',
               placeholder: {
                 type: 'plain_text',
                 text: 'Select a channel',
               },
-              options: channels,
+              filter: {
+                include: ['public', 'private'],
+                exclude_bot_users: true,
+                exclude_external_shared_channels: false,
+              },
             },
             optional: true,
           },
         ],
       },
     });
-    
+
     console.log('✅ Modal opened successfully!');
     console.log('   Modal response:', {
       ok: modalResponse.ok,
@@ -357,7 +337,7 @@ app.command('/kudos', async ({ command, ack, client }) => {
       data: error.data,
       trigger_id: command.trigger_id,
     });
-    
+
     // Try to send an error message to the user
     try {
       // Use postEphemeral for channels, postMessage for DMs
@@ -390,7 +370,7 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
   // Extract form values
   // users_select returns selected_user instead of selected_option
   const recipientId = values.recipient_block.recipient.selected_user;
-  
+
   // Get recipient name from Slack API
   let recipientName;
   try {
@@ -407,11 +387,12 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
   const shouldSendDm = postingOptions.some(opt => opt.value === 'dm');
   const shouldPostChannel = postingOptions.some(opt => opt.value === 'channel');
   const channelId = shouldPostChannel
-    ? values.channel_block?.channel?.selected_option?.value
+    ? values.channel_block?.channel?.selected_conversation
     : null;
-  const channelName = shouldPostChannel
-    ? values.channel_block?.channel?.selected_option?.text.text
-    : null;
+
+  // Since we use conversations_select, we might not have the channel name immediately
+  // We'll fetch it if needed during the save phase or just use the ID
+  let channelName = null;
 
   // Private kudos should not be posted to channels (only DM)
   if (visibility === 'private' && shouldPostChannel) {
@@ -422,6 +403,37 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
       },
     });
     return;
+  }
+
+  // Fetch channel name and verify accessibility if posting to a channel
+  if (shouldPostChannel && channelId) {
+    try {
+      // First try to join the channel (if it's public, this will ensure we're in it)
+      // If it's private, this will fail with channel_not_found if we're not in it
+      try {
+        await client.conversations.join({ channel: channelId });
+      } catch (joinError) {
+        console.log(`Note: Could not join channel ${channelId} (might be private or already a member)`);
+      }
+
+      const channelInfo = await client.conversations.info({ channel: channelId });
+      if (channelInfo.ok) {
+        channelName = channelInfo.channel.name;
+      }
+    } catch (error) {
+      console.error('Error fetching channel info:', error);
+
+      if (error.data?.error === 'channel_not_found') {
+        await ack({
+          response_action: 'errors',
+          errors: {
+            channel_block: 'Bot cannot access this channel. If it is private, please invite the bot to the channel first.',
+          },
+        });
+        return;
+      }
+      // For other errors, we'll try to proceed but it might fail later
+    }
   }
 
   // Validate
@@ -551,14 +563,14 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
 (async () => {
   // Start web server first (so API is available even if database is slow)
   startWebServer();
-  
+
   // Wait for database to be initialized (with timeout)
   const maxWaitTime = 30000; // 30 seconds
   const startTime = Date.now();
   while (!dbInitialized && (Date.now() - startTime) < maxWaitTime) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  
+
   if (!dbInitialized) {
     console.warn('⚠️  Database initialization is taking longer than expected. Server is running but some features may not work.');
   }

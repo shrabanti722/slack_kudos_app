@@ -121,6 +121,31 @@ router.get('/team-members', async (req, res) => {
   }
 });
 
+// Get channels (for Kudos form)
+router.get('/channels', async (req, res) => {
+  try {
+    const slackClient = getSlackClient();
+    const result = await slackClient.conversations.list({
+      types: 'public_channel,private_channel',
+      exclude_archived: true,
+      limit: 1000, // Get a reasonable amount
+    });
+
+    const channels = result.channels
+      .map(channel => ({
+        id: channel.id,
+        name: channel.name,
+        is_private: channel.is_private,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({ success: true, data: channels });
+  } catch (error) {
+    console.error('Error fetching channels:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch channels' });
+  }
+});
+
 // Send Kudos via web portal
 router.post('/kudos/send', async (req, res) => {
   try {

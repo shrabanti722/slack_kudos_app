@@ -26,13 +26,33 @@ export default function SendKudos() {
     emoji: '🎉',
     visibility: 'public',
     sendDm: true,
+    postInChannel: false,
+    channelId: '',
   });
+  const [channels, setChannels] = useState([]);
+  const [channelsLoading, setChannelsLoading] = useState(false);
   const [charCount, setCharCount] = useState(0);
 
   useEffect(() => {
     loadTeamMembers();
+    loadChannels();
     loadStoredUserInfo();
   }, []);
+
+  const loadChannels = async () => {
+    setChannelsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/channels`);
+      const data = await response.json();
+      if (data.success) {
+        setChannels(data.data);
+      }
+    } catch (error) {
+      console.error('Error loading channels:', error);
+    } finally {
+      setChannelsLoading(false);
+    }
+  };
 
   const loadTeamMembers = async () => {
     try {
@@ -106,6 +126,7 @@ export default function SendKudos() {
           emoji: formData.emoji,
           visibility: formData.visibility,
           sendDm: formData.sendDm,
+          channelId: formData.postInChannel ? formData.channelId : null,
         }),
       });
 
@@ -159,6 +180,8 @@ export default function SendKudos() {
       emoji: '🎉',
       visibility: 'public',
       sendDm: true,
+      postInChannel: false,
+      channelId: '',
     });
     setCharCount(0);
     setShowSuccess(false);
@@ -260,11 +283,10 @@ export default function SendKudos() {
           <div className="mb-7">
             <label className="block mb-2.5 font-semibold text-gray-900">Visibility</label>
             <div className="flex flex-col gap-3">
-              <label className={`flex items-center gap-3 p-4 bg-white border-2 rounded-lg cursor-pointer transition-all duration-300 ${
-                formData.visibility === 'public'
+              <label className={`flex items-center gap-3 p-4 bg-white border-2 rounded-lg cursor-pointer transition-all duration-300 ${formData.visibility === 'public'
                   ? 'border-primary bg-gradient-to-br from-primary/5 to-secondary/5'
                   : 'border-gray-300 hover:border-primary hover:bg-gray-50'
-              }`}>
+                }`}>
                 <input
                   type="radio"
                   name="visibility"
@@ -277,11 +299,10 @@ export default function SendKudos() {
                   🌐 Public - Visible to everyone
                 </span>
               </label>
-              <label className={`flex items-center gap-3 p-4 bg-white border-2 rounded-lg cursor-pointer transition-all duration-300 ${
-                formData.visibility === 'private'
+              <label className={`flex items-center gap-3 p-4 bg-white border-2 rounded-lg cursor-pointer transition-all duration-300 ${formData.visibility === 'private'
                   ? 'border-primary bg-gradient-to-br from-primary/5 to-secondary/5'
                   : 'border-gray-300 hover:border-primary hover:bg-gray-50'
-              }`}>
+                }`}>
                 <input
                   type="radio"
                   name="visibility"
@@ -297,19 +318,66 @@ export default function SendKudos() {
             </div>
           </div>
 
-          {/* Send DM Checkbox */}
-          <div className="mb-9">
-            <label className="flex items-center gap-3 p-4 bg-white border-2 border-gray-300 rounded-lg cursor-pointer hover:border-primary hover:bg-gray-50 transition-all duration-300">
-              <input
-                type="checkbox"
-                name="sendDm"
-                checked={formData.sendDm}
-                onChange={handleInputChange}
-                className="w-5 h-5 accent-primary cursor-pointer"
-              />
-              <span>Send Direct Message to recipient</span>
-            </label>
+          {/* Posting Options */}
+          <div className="mb-7">
+            <label className="block mb-2.5 font-semibold text-gray-900">Posting Options</label>
+            <div className="flex flex-col gap-3">
+              <label className="flex items-center gap-3 p-4 bg-white border-2 border-gray-300 rounded-lg cursor-pointer hover:border-primary hover:bg-gray-50 transition-all duration-300">
+                <input
+                  type="checkbox"
+                  name="sendDm"
+                  checked={formData.sendDm}
+                  onChange={handleInputChange}
+                  className="w-5 h-5 accent-primary cursor-pointer"
+                />
+                <span>Send Direct Message to recipient</span>
+              </label>
+
+              {formData.visibility === 'public' && (
+                <label className="flex items-center gap-3 p-4 bg-white border-2 border-gray-300 rounded-lg cursor-pointer hover:border-primary hover:bg-gray-50 transition-all duration-300">
+                  <input
+                    type="checkbox"
+                    name="postInChannel"
+                    checked={formData.postInChannel}
+                    onChange={handleInputChange}
+                    className="w-5 h-5 accent-primary cursor-pointer"
+                  />
+                  <span>Post in a channel</span>
+                </label>
+              )}
+            </div>
           </div>
+
+          {/* Channel Select (Conditional) */}
+          {formData.visibility === 'public' && formData.postInChannel && (
+            <div className="mb-9 animate-fade-in">
+              <label className="block mb-2.5 font-semibold text-gray-900">
+                Select Channel *
+              </label>
+              <select
+                name="channelId"
+                value={formData.channelId}
+                onChange={handleInputChange}
+                required={formData.postInChannel}
+                className="w-full px-4 py-3.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300 bg-white text-gray-900 appearance-none cursor-pointer"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23667eea' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 16px center',
+                  paddingRight: '40px'
+                }}
+              >
+                <option value="">
+                  {channelsLoading ? 'Loading channels...' : 'Select a channel...'}
+                </option>
+                {channels.map(channel => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.is_private ? '🔒' : '#'} {channel.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Submit Button */}
           <div className="text-center">
