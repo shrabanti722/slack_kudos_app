@@ -16,7 +16,8 @@ const router = express.Router();
 // Start OAuth flow
 router.get('/auth/slack', (req, res) => {
   const clientId = process.env.SLACK_CLIENT_ID;
-  const redirectUri = encodeURIComponent(`${req.protocol}://${req.get('host')}/api/auth/slack/callback`);
+  const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/slack/callback`);
 
   if (!clientId) {
     return res.status(500).json({ success: false, error: 'SLACK_CLIENT_ID not configured' });
@@ -32,7 +33,8 @@ router.get('/auth/slack/callback', async (req, res) => {
   const { code } = req.query;
   const clientId = process.env.SLACK_CLIENT_ID;
   const clientSecret = process.env.SLACK_CLIENT_SECRET;
-  const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/slack/callback`;
+  const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const redirectUri = `${baseUrl}/api/auth/slack/callback`;
 
   if (!code) {
     return res.redirect('/?error=missing_code');
