@@ -15,7 +15,7 @@ const EMOJI_OPTIONS = [
   { value: '⭐', label: '⭐ Star' },
 ];
 
-export default function SendKudos() {
+export default function SendKudos({ currentUser }) {
   const [teamMembers, setTeamMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -36,7 +36,6 @@ export default function SendKudos() {
   useEffect(() => {
     loadTeamMembers();
     loadChannels();
-    loadStoredUserInfo();
   }, []);
 
   const loadChannels = async () => {
@@ -68,22 +67,6 @@ export default function SendKudos() {
     }
   };
 
-  const loadStoredUserInfo = () => {
-    const storedUserId = localStorage.getItem('kudos_user_id');
-    const storedUserName = localStorage.getItem('kudos_user_name');
-    if (storedUserId && storedUserName) {
-      window.currentUserId = storedUserId;
-      window.currentUserName = storedUserName;
-    }
-  };
-
-  const storeUserInfo = (userId, userName) => {
-    localStorage.setItem('kudos_user_id', userId);
-    localStorage.setItem('kudos_user_name', userName);
-    window.currentUserId = userId;
-    window.currentUserName = userName;
-  };
-
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
@@ -99,17 +82,9 @@ export default function SendKudos() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    let senderId = window.currentUserId;
-    let senderName = window.currentUserName;
-
-    if (!senderId) {
-      senderId = prompt('Enter your Slack User ID:');
-      if (!senderId) {
-        alert('Please enter your Slack User ID to send Kudos');
-        return;
-      }
-      senderName = prompt('Enter your name:') || 'User';
-      storeUserInfo(senderId, senderName);
+    if (!currentUser) {
+      alert('Please sign in with Slack to send Kudos');
+      return;
     }
 
     setSubmitting(true);
@@ -119,8 +94,8 @@ export default function SendKudos() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fromUserId: senderId,
-          fromUserName: senderName,
+          fromUserId: currentUser.id,
+          fromUserName: currentUser.name,
           toUserId: formData.recipient,
           message: formData.message,
           emoji: formData.emoji,
@@ -284,8 +259,8 @@ export default function SendKudos() {
             <label className="block mb-2.5 font-semibold text-gray-900">Visibility</label>
             <div className="flex flex-col gap-3">
               <label className={`flex items-center gap-3 p-4 bg-white border-2 rounded-lg cursor-pointer transition-all duration-300 ${formData.visibility === 'public'
-                  ? 'border-primary bg-gradient-to-br from-primary/5 to-secondary/5'
-                  : 'border-gray-300 hover:border-primary hover:bg-gray-50'
+                ? 'border-primary bg-gradient-to-br from-primary/5 to-secondary/5'
+                : 'border-gray-300 hover:border-primary hover:bg-gray-50'
                 }`}>
                 <input
                   type="radio"
@@ -300,8 +275,8 @@ export default function SendKudos() {
                 </span>
               </label>
               <label className={`flex items-center gap-3 p-4 bg-white border-2 rounded-lg cursor-pointer transition-all duration-300 ${formData.visibility === 'private'
-                  ? 'border-primary bg-gradient-to-br from-primary/5 to-secondary/5'
-                  : 'border-gray-300 hover:border-primary hover:bg-gray-50'
+                ? 'border-primary bg-gradient-to-br from-primary/5 to-secondary/5'
+                : 'border-gray-300 hover:border-primary hover:bg-gray-50'
                 }`}>
                 <input
                   type="radio"

@@ -11,7 +11,100 @@ import { getSlackClient } from '../slack-client.js';
 
 const router = express.Router();
 
-// Get all kudos (with optional limit and visibility filter)
+// --- Slack OAuth Routes ---
+
+// Start OAuth flow
+router.get('/auth/slack', (req, res) => {
+  const clientId = process.env.SLACK_CLIENT_ID;
+  const redirectUri = encodeURIComponent(`${req.protocol}://${req.get('host')}/api/auth/slack/callback`);
+
+  if (!clientId) {
+    return res.status(500).json({ success: false, error: 'SLACK_CLIENT_ID not configured' });
+  }
+
+  // Redirect to Slack Authorization URL (OpenID Connect)
+  const slackUrl = `https://slack.com/openid/connect/authorize?response_type=code&scope=openid%20profile%20email&client_id=${clientId}&redirect_uri=${redirectUri}`;
+  res.redirect(slackUrl);
+});
+
+// OAuth Callback
+router.get('/auth/slack/callback', async (req, res) => {
+  const { code } = req.query;
+  const clientId = process.env.SLACK_CLIENT_ID;
+  const clientSecret = process.env.SLACK_CLIENT_SECRET;
+  const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/slack/callback`;
+
+  if (!code) {
+    return res.redirect('/?error=missing_code');
+  }
+
+  try {
+    // Exchange code for access token
+    const response = await fetch('https://slack.com/api/openid.connect.token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri
+      })
+    });
+
+    const data = await response.json();
+
+    if (!data.ok) {
+      console.error('Slack OAuth error:', data.error);
+      return res.redirect(`/?error=${data.error}`);
+    }
+
+    // data contains id_token which is a JWT, but Slack also returns user info in the token response
+    // Or we can use the access_token to call openid.connect.userInfo
+    const userResponse = await fetch('https://slack.com/api/openid.connect.userInfo', {
+      headers: { 'Authorization': `Bearer ${data.access_token}` }
+    });
+
+    const userData = await userResponse.json();
+
+    if (!userData.ok) {
+      console.error('Slack UserInfo error:', userData.error);
+      return res.redirect('/?error=user_info_failed');
+    }
+
+    // Save user info in session
+    // Slack OIDC returns user ID as 'sub', name as 'name', etc.
+    req.session.user = {
+      id: userData['https://slack.com/user_id'] || userData.sub,
+      name: userData.name,
+      email: userData.email,
+      image: userData.picture
+    };
+
+    console.log(`✅ User logged in: ${req.session.user.name} (${req.session.user.id})`);
+    res.redirect('/');
+  } catch (error) {
+    console.error('OAuth callback error:', error);
+    res.redirect('/?error=internal_error');
+  }
+});
+
+// Get current user info
+router.get('/auth/me', (req, res) => {
+  if (req.session && req.session.user) {
+    res.json({ success: true, user: req.session.user });
+  } else {
+    res.json({ success: false, error: 'Not authenticated' });
+  }
+});
+
+// Logout
+router.get('/auth/logout', (req, res) => {
+  req.session = null;
+  res.redirect('/');
+});
+
+// --- Kudos API Routes ---
 router.get('/kudos', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;

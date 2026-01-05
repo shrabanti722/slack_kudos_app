@@ -1,4 +1,5 @@
 import express from 'express';
+import cookieSession from 'cookie-session';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import apiRoutes from './routes/api.js';
@@ -9,6 +10,13 @@ const __dirname = dirname(__filename);
 const app = express();
 // Use PORT if set, otherwise default to 3001 (3000 might be used by other services)
 const PORT = process.env.PORT || 3001;
+
+// Session middleware
+app.use(cookieSession({
+  name: 'slack-kudos-session',
+  keys: [process.env.SESSION_SECRET || 'kudos-secret-key'],
+  maxAge: 24 * 60 * 60 * 1000 // 24 hours
+}));
 
 // Middleware
 app.use(express.json());

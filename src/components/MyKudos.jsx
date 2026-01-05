@@ -2,27 +2,18 @@ import { useState, useEffect } from 'react';
 
 const API_BASE = '/api';
 
-export default function MyKudos() {
-  const [userId, setUserId] = useState('');
+export default function MyKudos({ currentUser }) {
   const [kudos, setKudos] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const storedUserId = localStorage.getItem('kudos_user_id');
-    if (storedUserId) {
-      setUserId(storedUserId);
+    if (currentUser) {
+      loadMyKudos(currentUser.id);
     }
-  }, []);
+  }, [currentUser]);
 
-  const loadMyKudos = async () => {
-    if (!userId.trim()) {
-      alert('Please enter your Slack User ID');
-      return;
-    }
-
+  const loadMyKudos = async (userId) => {
     setLoading(true);
-    localStorage.setItem('kudos_user_id', userId);
-    window.currentUserId = userId;
 
     try {
       const response = await fetch(`${API_BASE}/kudos/user/${userId}?limit=50`);
@@ -32,20 +23,12 @@ export default function MyKudos() {
         setKudos(data.data);
       } else {
         setKudos([]);
-        alert('Failed to load Kudos. Please check your User ID.');
       }
     } catch (error) {
       console.error('Error loading my kudos:', error);
       setKudos([]);
-      alert('Error loading Kudos. Please try again.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      loadMyKudos();
     }
   };
 
@@ -83,35 +66,30 @@ export default function MyKudos() {
         </span>
       </h2>
 
-      {/* User ID Input */}
-      <div className="bg-gradient-to-br from-gray-50 to-white p-8 rounded-2xl shadow-md border border-gray-200 mb-8">
-        <div className="flex gap-3 flex-wrap items-end mb-4">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block mb-2 font-semibold text-gray-900">
-              Enter Your Slack User ID:
-            </label>
-            <input
-              type="text"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="e.g., U1234567890"
-              className="w-full px-4 py-3.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-300"
-            />
+      {/* User Status / Tip */}
+      <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl shadow-md border border-gray-200 mb-8 flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center text-white text-xl shadow-md">
+            📬
           </div>
+          <div>
+            <h3 className="font-bold text-gray-900">
+              {currentUser ? `Kudos for ${currentUser.name}` : 'My Kudos'}
+            </h3>
+            <p className="text-sm text-gray-600">
+              {currentUser ? 'Showing recent messages sent to you.' : 'Sign in to see your kudos.'}
+            </p>
+          </div>
+        </div>
+
+        {!currentUser && (
           <button
-            onClick={loadMyKudos}
-            disabled={loading}
-            className="px-7 py-3.5 gradient-primary text-white rounded-lg font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={() => window.location.href = '/api/auth/slack'}
+            className="px-6 py-2 gradient-primary text-white rounded-full font-semibold shadow-md hover:shadow-lg transition-all"
           >
-            {loading ? 'Loading...' : 'Load My Kudos'}
+            Sign in with Slack
           </button>
-        </div>
-        <div className="bg-gradient-to-r from-primary/8 to-secondary/8 p-4 rounded-lg border-l-4 border-primary">
-          <p className="text-sm text-gray-700">
-            💡 <strong>Tip:</strong> Find your Slack User ID by right-clicking your profile in Slack → "Copy member ID"
-          </p>
-        </div>
+        )}
       </div>
 
       {/* Kudos List */}
@@ -123,7 +101,7 @@ export default function MyKudos() {
           </div>
         )}
 
-        {!loading && kudos.length === 0 && userId && (
+        {!loading && kudos.length === 0 && currentUser && (
           <div className="text-center py-20 text-gray-500">
             <div className="text-6xl mb-6 opacity-40 animate-bounce">📭</div>
             <p className="text-xl mb-2">You haven't received any Kudos yet.</p>
@@ -131,10 +109,10 @@ export default function MyKudos() {
           </div>
         )}
 
-        {!loading && !userId && (
+        {!loading && !currentUser && (
           <div className="text-center py-20 text-gray-500">
             <div className="text-6xl mb-6 opacity-40">📭</div>
-            <p className="text-xl">Enter your Slack User ID above to see your Kudos</p>
+            <p className="text-xl">Sign in with Slack above to see your Kudos</p>
           </div>
         )}
 
