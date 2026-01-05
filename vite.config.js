@@ -25,6 +25,21 @@ export default defineConfig({
             '/api': {
                 target: 'http://localhost:3001',
                 changeOrigin: true,
+                secure: false,
+                configure: (proxy, _options) => {
+                    proxy.on('error', (err, _req, res) => {
+                        console.error('Proxy error:', err);
+                        if (res && !res.headersSent) {
+                            res.writeHead(500, {
+                                'Content-Type': 'application/json',
+                            });
+                            res.end(JSON.stringify({
+                                success: false,
+                                error: 'Backend server is not running. Please start it with "npm run dev"',
+                            }));
+                        }
+                    });
+                },
             },
         },
     },

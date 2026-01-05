@@ -51,36 +51,64 @@ const KUDOS_EMOJIS = ['🎉', '👏', '🌟', '💯', '🔥', '✨', '🙌', '�
 
 // Handle /kudos slash command
 app.command('/kudos', async ({ command, ack, client }) => {
-  await ack();
+  console.log('🔔 /kudos command handler triggered');
+  console.log('Command details:', {
+    user_id: command.user_id,
+    user_name: command.user_name,
+    channel_id: command.channel_id,
+    trigger_id: command.trigger_id ? `${command.trigger_id.substring(0, 20)}...` : 'missing',
+  });
 
   try {
-    // Get list of users in the workspace
-    const usersResult = await client.users.list();
-    const users = usersResult.members
-      .filter(user => !user.deleted && !user.is_bot && user.id !== 'USLACKBOT')
-      .map(user => ({
-        text: {
-          type: 'plain_text',
-          text: user.real_name || user.name,
-        },
-        value: user.id,
-      }));
+    await ack();
+    console.log(`✅ Command acknowledged for user: ${command.user_name} (${command.user_id})`);
+  } catch (error) {
+    console.error('❌ Error acknowledging command:', error);
+    return;
+  }
 
+  try {
+    // Note: We don't need to fetch users anymore since users_select handles this automatically
+    // with built-in search functionality and no 100-item limit
+    console.log('👥 Using users_select for team member selection (supports search, no limit)');
+
+    console.log('📢 Fetching channels...');
     // Get list of public channels
     const channelsResult = await client.conversations.list({
       types: 'public_channel,private_channel',
       exclude_archived: true,
     });
-    const channels = channelsResult.channels.map(channel => ({
-      text: {
-        type: 'plain_text',
-        text: `#${channel.name}`,
-      },
-      value: channel.id,
-    }));
+    console.log(`📊 Raw channels result: ${channelsResult.channels?.length || 0} channels`);
+    
+    const allChannels = (channelsResult.channels || [])
+      .map(channel => ({
+        text: {
+          type: 'plain_text',
+          text: `#${channel.name}`,
+        },
+        value: channel.id,
+      }))
+      .sort((a, b) => a.text.text.localeCompare(b.text.text)); // Sort alphabetically
+    
+    // Limit channels to 100 as well
+    const channels = allChannels.slice(0, 100);
+    const totalChannels = allChannels.length;
 
+    console.log(`✅ Found ${totalChannels} channels (showing first ${channels.length} in dropdown)`);
+
+    // Validate trigger_id
+    if (!command.trigger_id) {
+      console.error('❌ Missing trigger_id! Cannot open modal.');
+      throw new Error('Missing trigger_id. Please try the command again.');
+    }
+
+    console.log('🚀 Opening modal...');
+    console.log(`   Trigger ID: ${command.trigger_id.substring(0, 20)}...`);
+    console.log(`   Using users_select (searchable, no limit)`);
+    console.log(`   Channels in dropdown: ${channels.length}`);
+    
     // Open modal
-    await client.views.open({
+    const modalResponse = await client.views.open({
       trigger_id: command.trigger_id,
       view: {
         type: 'modal',
@@ -104,7 +132,7 @@ app.command('/kudos', async ({ command, ack, client }) => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*Hey ${command.user_name}!* 👋\n\nSend kudos to recognize your team member's great work!`,
+              text: `*Hey ${command.user_name}!* 👋\n\nSend kudos to recognize your team member's great work!\n\n_💡 Tip: Use the search box to find any team member._`,
             },
           },
           {
@@ -119,13 +147,12 @@ app.command('/kudos', async ({ command, ack, client }) => {
               emoji: true,
             },
             element: {
-              type: 'static_select',
+              type: 'users_select',
               action_id: 'recipient',
               placeholder: {
                 type: 'plain_text',
-                text: 'Select a team member',
+                text: 'Select a team member (searchable)',
               },
-              options: users,
             },
           },
           {
@@ -207,13 +234,6 @@ app.command('/kudos', async ({ command, ack, client }) => {
             element: {
               type: 'radio_buttons',
               action_id: 'visibility',
-              initial_option: {
-                text: {
-                  type: 'plain_text',
-                  text: '🌐 Public',
-                },
-                value: 'public',
-              },
               options: [
                 {
                   text: {
@@ -238,6 +258,18 @@ app.command('/kudos', async ({ command, ack, client }) => {
                   },
                 },
               ],
+              // initial_option must exactly match one of the options above
+              initial_option: {
+                text: {
+                  type: 'plain_text',
+                  text: '🌐 Public',
+                },
+                value: 'public',
+                description: {
+                  type: 'plain_text',
+                  text: 'Visible to everyone',
+                },
+              },
             },
             optional: true,
           },
@@ -311,13 +343,41 @@ app.command('/kudos', async ({ command, ack, client }) => {
         ],
       },
     });
-  } catch (error) {
-    console.error('Error opening modal:', error);
-    await client.chat.postEphemeral({
-      channel: command.channel_id,
-      user: command.user_id,
-      text: 'Sorry, there was an error opening the kudos form. Please try again.',
+    
+    console.log('✅ Modal opened successfully!');
+    console.log('   Modal response:', {
+      ok: modalResponse.ok,
+      view_id: modalResponse.view?.id,
     });
+  } catch (error) {
+    console.error('❌ Error opening modal:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      data: error.data,
+      trigger_id: command.trigger_id,
+    });
+    
+    // Try to send an error message to the user
+    try {
+      // Use postEphemeral for channels, postMessage for DMs
+      if (command.channel_id && command.channel_id.startsWith('C')) {
+        // It's a channel
+        await client.chat.postEphemeral({
+          channel: command.channel_id,
+          user: command.user_id,
+          text: `Sorry, there was an error opening the kudos form: ${error.message}. Please check the bot logs or try again.`,
+        });
+      } else {
+        // It's a DM - use postMessage instead
+        await client.chat.postMessage({
+          channel: command.user_id,
+          text: `Sorry, there was an error opening the kudos form: ${error.message}. Please check the bot logs or try again.`,
+        });
+      }
+    } catch (ephemeralError) {
+      console.error('❌ Failed to send error message to user:', ephemeralError);
+    }
   }
 });
 
@@ -328,8 +388,18 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
   const userName = body.user.name;
 
   // Extract form values
-  const recipientId = values.recipient_block.recipient.selected_option.value;
-  const recipientName = values.recipient_block.recipient.selected_option.text.text;
+  // users_select returns selected_user instead of selected_option
+  const recipientId = values.recipient_block.recipient.selected_user;
+  
+  // Get recipient name from Slack API
+  let recipientName;
+  try {
+    const recipientInfo = await client.users.info({ user: recipientId });
+    recipientName = recipientInfo.user.real_name || recipientInfo.user.name;
+  } catch (error) {
+    console.error('Error fetching recipient name:', error);
+    recipientName = 'Unknown User';
+  }
   const message = values.message_block.message.value;
   const emoji = values.emoji_block?.emoji?.selected_option?.value || '🎉';
   const visibility = values.visibility_block?.visibility?.selected_option?.value || 'public';
@@ -479,18 +549,29 @@ app.view('kudos_modal', async ({ ack, view, client, body }) => {
 
 // Start the app
 (async () => {
-  // Wait for database to be initialized
-  while (!dbInitialized) {
+  // Start web server first (so API is available even if database is slow)
+  startWebServer();
+  
+  // Wait for database to be initialized (with timeout)
+  const maxWaitTime = 30000; // 30 seconds
+  const startTime = Date.now();
+  while (!dbInitialized && (Date.now() - startTime) < maxWaitTime) {
     await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  if (!dbInitialized) {
+    console.warn('⚠️  Database initialization is taking longer than expected. Server is running but some features may not work.');
   }
 
   // Start Slack bot (Socket Mode doesn't require a port)
-  await app.start();
-  console.log(`⚡️ Slack Kudos Bot is running!`);
-  console.log('Ready to receive /kudos commands!');
-
-  // Start web server
-  startWebServer();
+  try {
+    await app.start();
+    console.log(`⚡️ Slack Kudos Bot is running!`);
+    console.log('Ready to receive /kudos commands!');
+  } catch (error) {
+    console.error('❌ Failed to start Slack bot:', error.message);
+    console.log('💡 Web server is still running for API access');
+  }
 })();
 
 // Graceful shutdown
